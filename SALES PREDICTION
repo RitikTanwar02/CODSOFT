@@ -1,93 +1,59 @@
-import numpy as np
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.arima_model import ARIMA
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.stattools import adfuller
 
-# Data Visualisation
-import matplotlib.pyplot as plt 
-import seaborn as sns
-advertising = pd.read_csv('advertising.csv')
-advertising.head()
+# Load your sales data as a pandas DataFrame, assuming you have a date column and a sales column
+# Replace 'sales_data.csv' with the path to your data file
+data = pd.read_csv('advertising.csv')
 
-advertising.shape
+# Convert the date column to a datetime object and set it as the index
+data['Date'] = pd.to_datetime(data['Date'])
+data.set_index('Date', inplace=True)
 
-advertising.info()
+# Check if the data is stationary using the Augmented Dickey-Fuller test
+def test_stationarity(timeseries):
+    # Perform Dickey-Fuller test
+    result = adfuller(timeseries, autolag='AIC')
+    print('ADF Statistic:', result[0])
+    print('p-value:', result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print(f'   {key}: {value}')
 
-advertising.describe()
+test_stationarity(data['Sales'])
 
-# Checking Null values
-advertising.isnull().sum()*100/advertising.shape[0]
+# If the data is not stationary, you can difference it to make it stationary
+data_diff = data['Sales'].diff().dropna()
 
-# Outlier Analysis
-fig, axs = plt.subplots(3, figsize = (5,5))
-plt1 = sns.boxplot(advertising['TV'], ax = axs[0])
-plt2 = sns.boxplot(advertising['Newspaper'], ax = axs[1])
-plt3 = sns.boxplot(advertising['Radio'], ax = axs[2])
-plt.tight_layout()
-
-sns.boxplot(advertising['Sales'])
+# Plot the ACF and PACF to determine the order of ARIMA(p, d, q)
+plot_acf(data_diff, lags=20)
+plot_pacf(data_diff, lags=20)
 plt.show()
 
-sns.pairplot(advertising, x_vars=['TV', 'Newspaper', 'Radio'], y_vars='Sales', height=4, aspect=1, kind='scatter')
+# Based on the ACF and PACF plots, determine the values of p and q for ARIMA(p, d, q)
+p = 1  # AR order
+d = 1  # Differencing order
+q = 1  # MA order
+
+# Fit the ARIMA model
+model = ARIMA(data['Sales'], order=(p, d, q))
+results = model.fit(disp=-1)
+
+# Plot the original sales data and the predicted values
+plt.figure(figsize=(12, 6))
+plt.plot(data.index, data['Sales'], label='Actual Sales')
+plt.plot(data.index, results.fittedvalues, color='red', label='Predicted Sales')
+plt.legend()
+plt.title('Sales Prediction using ARIMA')
 plt.show()
 
+# Forecast future sales
+forecast_steps = 12  # Change this to the number of periods you want to forecast
+forecast, stderr, conf_int = results.forecast(steps=forecast_steps)
 
-sns.heatmap(advertising.corr(), cmap="YlGnBu", annot = True)
-plt.show()
-
-X = advertising['TV']
-y = advertising['Sales']
-
-from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(X, y, train_size = 0.7, test_size = 0.3, random_state = 100)
-# Let's now take a look at the train dataset
-
-X_train.head()
-
-y_train.head()
-
-import statsmodels.api as sm
-
-# Add a constant to get an intercept
-X_train_sm = sm.add_constant(X_train)
-
-# Fit the resgression line using 'OLS'
-lr = sm.OLS(y_train, X_train_sm).fit()
-# Print the parameters, i.e. the intercept and the slope of the regression line fitted
-lr.params
-
-# Performing a summary operation lists out all the different parameters of the regression line fitted
-print(lr.summary())
-
-plt.scatter(X_train, y_train)
-plt.plot(X_train, 6.948 + 0.054*X_train, 'r')
-plt.show()
-
-y_train_pred = lr.predict(X_train_sm)
-res = (y_train - y_train_pred)
-fig = plt.figure()
-sns.distplot(res, bins = 15)
-fig.suptitle('Error Terms', fontsize = 15)                  # Plot heading 
-plt.xlabel('y_train - y_train_pred', fontsize = 15)         # X-label
-plt.show()
-
-plt.scatter(X_train,res)
-plt.show()
-
-# Add a constant to X_test
-X_test_sm = sm.add_constant(X_test)
-
-# Predict the y values corresponding to X_test_sm
-y_pred = lr.predict(X_test_sm)
-y_pred.head()
-
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import r2_score
-
-#Returns the mean squared error; we'll take a square root
-np.sqrt(mean_squared_error(y_test, y_pred))
-
-r_squared = r2_score(y_test, y_pred)
-r_squared
-
-plt.scatter(X_test, y_test)
-plt.plot(X_test, 6.948 + 0.054 * X_test,'r')
-plt.show()
+# Print the forecasted sales values
+print('Forecasted Sales:')
+print(forecast)
